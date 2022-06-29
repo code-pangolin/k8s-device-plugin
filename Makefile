@@ -19,7 +19,7 @@ DIST_DIR ?= $(CURDIR)/dist
 include $(CURDIR)/versions.mk
 
 ifeq ($(IMAGE_NAME),)
-REGISTRY ?= nvidia
+REGISTRY ?= storswift
 IMAGE_NAME = $(REGISTRY)/k8s-device-plugin
 endif
 

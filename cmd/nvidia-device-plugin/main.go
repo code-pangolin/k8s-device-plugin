@@ -34,6 +34,8 @@ import (
 
 var version string // This should be set at build time to indicate the actual version
 
+var hasNVML = true
+
 func main() {
 	var configFile string
 
@@ -221,6 +223,7 @@ func startPlugins(c *cli.Context, flags []cli.Flag, restarting bool) ([]*NvidiaD
 		if *config.Flags.FailOnInitError {
 			return nil, false, fmt.Errorf("failed to initialize NVML: %v", err)
 		}
+		hasNVML = false
 		select {}
 	}
 

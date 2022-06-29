@@ -17,6 +17,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"net"
@@ -28,6 +29,7 @@ import (
 
 	spec "github.com/NVIDIA/k8s-device-plugin/api/config/v1"
 	"github.com/NVIDIA/k8s-device-plugin/internal/rm"
+	"github.com/google/uuid"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 	pluginapi "k8s.io/kubelet/pkg/apis/deviceplugin/v1beta1"
@@ -49,6 +51,7 @@ type NvidiaDevicePlugin struct {
 	server *grpc.Server
 	health chan *rm.Device
 	stop   chan interface{}
+	uuid   string
 }
 
 // NewNvidiaDevicePlugin returns an initialized NvidiaDevicePlugin
@@ -66,6 +69,7 @@ func NewNvidiaDevicePlugin(config *spec.Config, resourceManager rm.ResourceManag
 		server: nil,
 		health: nil,
 		stop:   nil,
+		uuid:   uuid.New().String(),
 	}
 }
 
@@ -212,7 +216,26 @@ func (plugin *NvidiaDevicePlugin) GetDevicePluginOptions(context.Context, *plugi
 
 // ListAndWatch lists devices and update that list according to the health status
 func (plugin *NvidiaDevicePlugin) ListAndWatch(e *pluginapi.Empty, s pluginapi.DevicePlugin_ListAndWatchServer) error {
-	s.Send(&pluginapi.ListAndWatchResponse{Devices: plugin.apiDevices()})
+	// s.Send(&pluginapi.ListAndWatchResponse{Devices: plugin.apiDevices()})
+
+	devices := plugin.apiDevices()
+	fmt.Printf("===========2222222222=========")
+
+	for _, dev := range devices {
+		bytes, _ := json.Marshal(dev)
+		fmt.Println(string(bytes))
+	}
+	fmt.Printf("===========2222222222=========")
+
+	fakeDevice := []*pluginapi.Device{{
+		ID:     plugin.uuid,
+		Health: "Healthy",
+		Topology: &pluginapi.TopologyInfo{
+			Nodes: []*pluginapi.NUMANode{},
+		},
+	}}
+
+	s.Send(&pluginapi.ListAndWatchResponse{Devices: fakeDevice})
 
 	for {
 		select {
@@ -221,8 +244,8 @@ func (plugin *NvidiaDevicePlugin) ListAndWatch(e *pluginapi.Empty, s pluginapi.D
 		case d := <-plugin.health:
 			// FIXME: there is no way to recover from the Unhealthy state.
 			d.Health = pluginapi.Unhealthy
-			log.Printf("'%s' device marked unhealthy: %s", plugin.rm.Resource(), d.ID)
-			s.Send(&pluginapi.ListAndWatchResponse{Devices: plugin.apiDevices()})
+			// log.Printf("'%s' device marked unhealthy: %s", plugin.rm.Resource(), d.ID)
+			s.Send(&pluginapi.ListAndWatchResponse{Devices: fakeDevice})
 		}
 	}
 }
@@ -231,13 +254,13 @@ func (plugin *NvidiaDevicePlugin) ListAndWatch(e *pluginapi.Empty, s pluginapi.D
 func (plugin *NvidiaDevicePlugin) GetPreferredAllocation(ctx context.Context, r *pluginapi.PreferredAllocationRequest) (*pluginapi.PreferredAllocationResponse, error) {
 	response := &pluginapi.PreferredAllocationResponse{}
 	for _, req := range r.ContainerRequests {
-		devices, err := plugin.rm.GetPreferredAllocation(req.AvailableDeviceIDs, req.MustIncludeDeviceIDs, int(req.AllocationSize))
-		if err != nil {
-			return nil, fmt.Errorf("error getting list of preferred allocation devices: %v", err)
-		}
+		// devices, err := plugin.rm.GetPreferredAllocation(req.AvailableDeviceIDs, req.MustIncludeDeviceIDs, int(req.AllocationSize))
+		// if err != nil {
+		// 	return nil, fmt.Errorf("error getting list of preferred allocation devices: %v", err)
+		// }
 
 		resp := &pluginapi.ContainerPreferredAllocationResponse{
-			DeviceIDs: devices,
+			DeviceIDs: req.AvailableDeviceIDs,
 		}
 
 		response.ContainerResponses = append(response.ContainerResponses, resp)
@@ -248,7 +271,26 @@ func (plugin *NvidiaDevicePlugin) GetPreferredAllocation(ctx context.Context, r 
 // Allocate which return list of devices.
 func (plugin *NvidiaDevicePlugin) Allocate(ctx context.Context, reqs *pluginapi.AllocateRequest) (*pluginapi.AllocateResponse, error) {
 	responses := pluginapi.AllocateResponse{}
+
+	if !hasNVML {
+		for range reqs.ContainerRequests {
+			responses.ContainerResponses = append(responses.ContainerResponses, &pluginapi.ContainerAllocateResponse{})
+		}
+		return &responses, nil
+	}
+
+	fmt.Println("==================")
+	fmt.Println("allocate all gpus")
+	var ids = plugin.Devices().GetIDs()
+	fmt.Println(ids)
+	fmt.Println("==================")
+
 	for _, req := range reqs.ContainerRequests {
+
+		fmt.Println("==================")
+		fmt.Println(req.DevicesIDs)
+		fmt.Println("==================")
+
 		// If the devices being allocated are replicas, then (conditionally)
 		// error out if more than one resource is being allocated.
 		if plugin.config.Sharing.TimeSlicing.FailRequestsGreaterThanOne && rm.AnnotatedIDs(req.DevicesIDs).AnyHasAnnotations() {
@@ -257,15 +299,15 @@ func (plugin *NvidiaDevicePlugin) Allocate(ctx context.Context, reqs *pluginapi.
 			}
 		}
 
-		for _, id := range req.DevicesIDs {
-			if !plugin.rm.Devices().Contains(id) {
-				return nil, fmt.Errorf("invalid allocation request for '%s': unknown device: %s", plugin.rm.Resource(), id)
-			}
-		}
+		// for _, id := range req.DevicesIDs {
+		// 	if !plugin.rm.Devices().Contains(id) {
+		// 		return nil, fmt.Errorf("invalid allocation request for '%s': unknown device: %s", plugin.rm.Resource(), id)
+		// 	}
+		// }
 
 		response := pluginapi.ContainerAllocateResponse{}
 
-		ids := req.DevicesIDs
+		// ids := req.DevicesIDs
 		deviceIDs := plugin.deviceIDsFromAnnotatedDeviceIDs(ids)
 
 		if *plugin.config.Flags.Plugin.DeviceListStrategy == spec.DeviceListStrategyEnvvar {
