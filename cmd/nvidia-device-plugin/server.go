@@ -189,11 +189,13 @@ func (plugin *NvidiaDevicePlugin) Register() error {
 	}
 	defer conn.Close()
 
+	_, name := plugin.rm.Resource().Split()
+
 	client := pluginapi.NewRegistrationClient(conn)
 	reqt := &pluginapi.RegisterRequest{
 		Version:      pluginapi.Version,
 		Endpoint:     path.Base(plugin.socket),
-		ResourceName: string(plugin.rm.Resource()),
+		ResourceName: "storswift/" + name,
 		Options: &pluginapi.DevicePluginOptions{
 			GetPreferredAllocationAvailable: true,
 		},
