@@ -272,7 +272,7 @@ func (plugin *NvidiaDevicePlugin) GetPreferredAllocation(ctx context.Context, r 
 func (plugin *NvidiaDevicePlugin) Allocate(ctx context.Context, reqs *pluginapi.AllocateRequest) (*pluginapi.AllocateResponse, error) {
 	responses := pluginapi.AllocateResponse{}
 
-	if !hasNVML {
+	if plugin.rm.IsFake() {
 		for range reqs.ContainerRequests {
 			responses.ContainerResponses = append(responses.ContainerResponses, &pluginapi.ContainerAllocateResponse{})
 		}
@@ -286,10 +286,6 @@ func (plugin *NvidiaDevicePlugin) Allocate(ctx context.Context, reqs *pluginapi.
 	fmt.Println("==================")
 
 	for _, req := range reqs.ContainerRequests {
-
-		fmt.Println("==================")
-		fmt.Println(req.DevicesIDs)
-		fmt.Println("==================")
 
 		// If the devices being allocated are replicas, then (conditionally)
 		// error out if more than one resource is being allocated.

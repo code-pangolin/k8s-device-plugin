@@ -38,6 +38,7 @@ type ResourceManager interface {
 	Devices() Devices
 	GetPreferredAllocation(available, required []string, size int) ([]string, error)
 	CheckHealth(stop <-chan interface{}, unhealthy chan<- *Device) error
+	IsFake() bool
 }
 
 // NewResourceManagers returns a []ResourceManager, one for each resource in 'config'.
@@ -63,6 +64,11 @@ func NewResourceManagers(config *spec.Config) ([]ResourceManager, error) {
 	}
 
 	return rms, nil
+}
+
+// IsFake
+func (r *resourceManager) IsFake() bool {
+	return false
 }
 
 // Resource gets the resource name associated with the ResourceManager

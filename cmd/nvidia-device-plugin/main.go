@@ -34,8 +34,6 @@ import (
 
 var version string // This should be set at build time to indicate the actual version
 
-var hasNVML = true
-
 func main() {
 	var configFile string
 
@@ -223,8 +221,40 @@ func startPlugins(c *cli.Context, flags []cli.Flag, restarting bool) ([]*NvidiaD
 		if *config.Flags.FailOnInitError {
 			return nil, false, fmt.Errorf("failed to initialize NVML: %v", err)
 		}
-		hasNVML = false
-		select {}
+
+		plugins := []*NvidiaDevicePlugin{
+			NewNvidiaDevicePlugin(config, rm.NewFakeResourceManagers(config)),
+		}
+
+		// Loop through all plugins, starting them if they have any devices
+		// to serve. If even one plugin fails to start properly, try
+		// starting them all again.
+		started := 0
+		for _, p := range plugins {
+			// Just continue if there are no devices to serve for plugin p.
+			if len(p.Devices()) == 0 {
+				continue
+			}
+
+			// Start the gRPC server for plugin p and connect it with the kubelet.
+			if err := p.Start(); err != nil {
+				log.SetOutput(os.Stderr)
+				log.Println("Could not contact Kubelet. Did you enable the device plugin feature gate?")
+				log.Printf("You can check the prerequisites at: https://github.com/NVIDIA/k8s-device-plugin#prerequisites")
+				log.Printf("You can learn how to set the runtime at: https://github.com/NVIDIA/k8s-device-plugin#quick-start")
+				log.SetOutput(os.Stdout)
+				return plugins, true, nil
+			}
+			started++
+		}
+
+		if started == 0 {
+			log.Println("No devices found. Waiting indefinitely.")
+		}
+
+		return plugins, false, nil
+
+		// select {}
 	}
 
 	// Update the configuration file with default resources.
@@ -247,7 +277,7 @@ func startPlugins(c *cli.Context, flags []cli.Flag, restarting bool) ([]*NvidiaD
 	if err != nil {
 		return nil, false, fmt.Errorf("error creating MIG strategy: %v", err)
 	}
-	plugins := migStrategy.GetPlugins()
+	plugins := migStrategy.GetPlugins() //TODO:replace with fake resource manager
 
 	// Loop through all plugins, starting them if they have any devices
 	// to serve. If even one plugin fails to start properly, try
