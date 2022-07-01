@@ -1,3 +1,4 @@
 #!/bin/bash
-docker build -t storswift/k8s-device-plugin:devel -f deployments/container/Dockerfile.ubuntu .
-docker push storswift/k8s-device-plugin:0.12.2
+version=0.12.2
+docker build -t storswift/k8s-device-plugin:${version} -f deployments/container/Dockerfile.ubuntu .
+docker push storswift/k8s-device-plugin:${version}
